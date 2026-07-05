@@ -23,7 +23,20 @@ main() {
 
   cd "$root"
   echo "[update] building vps-sync"
-  go build -o bin/vps-sync ./cmd/vps-sync
+  # Stage the build so a failure (e.g. GSBS gained a dependency and go.sum
+  # hasn't been retidied+pushed yet) keeps the previous working binary and the
+  # publish still happens on schedule.
+  if go build -o bin/vps-sync.new ./cmd/vps-sync; then
+    mv bin/vps-sync.new bin/vps-sync
+  else
+    rm -f bin/vps-sync.new
+    if [ -x bin/vps-sync ]; then
+      echo "[update] WARNING: build failed; running previous binary (fix: go mod tidy locally, test, push)" >&2
+    else
+      echo "[update] ERROR: build failed and no previous binary exists" >&2
+      exit 1
+    fi
+  fi
 
   exec ./bin/vps-sync "${@:-run}"
 }
