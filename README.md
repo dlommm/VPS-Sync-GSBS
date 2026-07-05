@@ -1,8 +1,8 @@
 # VPS-Sync-GSBS
 
-Self-contained weekly publisher for the GSBS PCGW manifest bundle. Keeps a local SQLite mirror of PCGamingWiki data in sync and uploads a pre-built bundle to Cloudflare R2 so every GSBS server can fetch game/save-path data without hammering the PCGW API.
+Self-contained weekly publisher for the [GSBS](https://github.com/dlommm/GSBS--Game-Sync---Backup-Service-) PCGW manifest bundle. Keeps a local SQLite mirror of PCGamingWiki data in sync and uploads a pre-built bundle to Cloudflare R2 so every GSBS server can fetch game/save-path data without hammering the PCGW API.
 
-**No gsbs-manifest dependency.** Export, validation, index versioning, and R2 upload are implemented in this repo. GSBS is used as a Go library for the PCGW sync engine, the bundle exporter, and the `index.json` schema — so the publisher can never drift from what GSBS servers parse.
+**Companion repo to [GSBS — Game Sync & Backup Service](https://github.com/dlommm/GSBS--Game-Sync---Backup-Service-).** GSBS is used as a Go library for the PCGW sync engine, the bundle exporter, and the `index.json` schema — so the publisher can never drift from what GSBS servers parse. Export, validation, index versioning, and R2 upload are implemented in this repo; every GSBS install consumes the published bundle by default (see GSBS's [docs/MANIFEST_BUNDLE.md](https://github.com/dlommm/GSBS--Game-Sync---Backup-Service-/blob/main/docs/MANIFEST_BUNDLE.md)).
 
 ## Flow
 
