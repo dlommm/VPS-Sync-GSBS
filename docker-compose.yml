@@ -1,0 +1,18 @@
+services:
+  sync:
+    build:
+      context: .
+      args:
+        GSBS_REPO_URL: ${GSBS_REPO_URL:-https://github.com/dlommm/GSBS--Game-Sync---Backup-Service-.git}
+        GSBS_REF: ${GSBS_REF:-main}
+    image: vps-sync-gsbs:latest
+    env_file: .env
+    environment:
+      GSBS_DB: /data/gsbs.db
+      OUT_DIR: /data/out
+    volumes:
+      - gsbs-data:/data
+    profiles: [manual]
+
+volumes:
+  gsbs-data:

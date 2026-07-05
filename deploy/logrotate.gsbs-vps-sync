@@ -1,0 +1,17 @@
+# Logrotate for GSBS VPS sync
+# Install:
+#   sudo cp deploy/logrotate.gsbs-vps-sync /etc/logrotate.d/gsbs-vps-sync
+#   sudo chmod 644 /etc/logrotate.d/gsbs-vps-sync
+#
+# Rotates when the log reaches 2MB; keeps 5 old files.
+
+/opt/vps-sync-gsbs/logs/vps-sync.log
+/var/log/gsbs-vps-sync.log {
+    size 2M
+    rotate 5
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}

@@ -1,0 +1,20 @@
+# Secrets — never commit
+.env
+.env.production
+.env.local
+deploy/secrets.env
+
+# Local data, databases, build output
+data/
+out/
+bin/
+DB-Backup/
+logs/
+work/
+*.db
+*.db-wal
+*.db-shm
+*.bak.*
+
+# OS noise
+.DS_Store

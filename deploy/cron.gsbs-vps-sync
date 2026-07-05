@@ -1,0 +1,16 @@
+# GSBS manifest publisher — weekly PCGW sync + R2 export
+# Install cron:
+#   sudo cp deploy/cron.gsbs-vps-sync /etc/cron.d/gsbs-vps-sync
+#   sudo chmod 644 /etc/cron.d/gsbs-vps-sync
+#   sudo touch /var/log/gsbs-vps-sync.log
+#
+# Optional log rotation (2MB, keep 5):
+#   sudo cp deploy/logrotate.gsbs-vps-sync /etc/logrotate.d/gsbs-vps-sync
+#   sudo chmod 644 /etc/logrotate.d/gsbs-vps-sync
+#
+# Default log path (if LOG_FILE unset in .env): /opt/vps-sync-gsbs/logs/vps-sync.log
+# PCGW library output is captured into the same file automatically.
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/go/bin
+
+0 3 * * 0 root cd /opt/vps-sync-gsbs && ./bin/vps-sync run
