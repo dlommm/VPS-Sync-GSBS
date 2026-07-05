@@ -1,4 +1,6 @@
-# GSBS manifest publisher — weekly PCGW sync + R2 export
+# GSBS manifest publisher — weekly self-update + PCGW sync + R2 export
+# Pulls latest code for this repo and the GSBS library, rebuilds, then runs.
+#
 # Install cron:
 #   sudo cp deploy/cron.gsbs-vps-sync /etc/cron.d/gsbs-vps-sync
 #   sudo chmod 644 /etc/cron.d/gsbs-vps-sync
@@ -13,4 +15,4 @@
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/go/bin
 
-0 3 * * 0 root cd /opt/vps-sync-gsbs && ./bin/vps-sync run
+0 3 * * 0 root cd /opt/vps-sync-gsbs && ./scripts/update-and-run.sh run >> /var/log/gsbs-vps-sync.log 2>&1

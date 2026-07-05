@@ -53,10 +53,13 @@ chmod 600 .env
 go build -o bin/vps-sync ./cmd/vps-sync
 ./scripts/bootstrap.sh
 
-# Weekly cron (Sunday 03:00 UTC)
+# Weekly cron (Sunday 03:00 UTC) — self-updating: pulls latest code for this
+# repo and the GSBS library, rebuilds, then publishes
 sudo cp deploy/cron.gsbs-vps-sync /etc/cron.d/gsbs-vps-sync
 sudo cp deploy/logrotate.gsbs-vps-sync /etc/logrotate.d/gsbs-vps-sync
 ```
+
+To update immediately instead of waiting for Sunday: `./scripts/update-and-run.sh run`.
 
 ### Configuration (`.env`)
 
