@@ -51,8 +51,9 @@ func Send(webhookURL, message string) {
 	log.Info().Msg("webhook notification sent")
 }
 
-// RunResult formats and sends the outcome of a command run.
-func RunResult(webhookURL, cmd string, elapsed time.Duration, manifestVersion int, runErr error) {
+// RunResult formats and sends the outcome of a command run, including any
+// non-fatal warnings (e.g. a failed PCGW sync that did not block the publish).
+func RunResult(webhookURL, cmd string, elapsed time.Duration, manifestVersion int, warnings []string, runErr error) {
 	if strings.TrimSpace(webhookURL) == "" {
 		return
 	}
@@ -63,6 +64,9 @@ func RunResult(webhookURL, cmd string, elapsed time.Duration, manifestVersion in
 		msg = fmt.Sprintf("✅ vps-sync %s completed in %s — published manifest v%d", cmd, elapsed.Round(time.Second), manifestVersion)
 	} else {
 		msg = fmt.Sprintf("✅ vps-sync %s completed in %s", cmd, elapsed.Round(time.Second))
+	}
+	for _, w := range warnings {
+		msg += "\n⚠️ " + w
 	}
 	Send(webhookURL, msg)
 }

@@ -47,12 +47,16 @@ func Export(ctx context.Context, dbPath, outDir, publicBase, gsbsVersion string)
 		return Result{}, err
 	}
 
+	metaPath := filepath.Join(outDir, "manifest.meta.json")
+	if err := guardAgainstShrink(metaPath, meta); err != nil {
+		return Result{}, err
+	}
+
 	gzPath := filepath.Join(outDir, "manifest.json.gz")
 	if err := os.WriteFile(gzPath, data, 0o644); err != nil {
 		return Result{}, err
 	}
 
-	metaPath := filepath.Join(outDir, "manifest.meta.json")
 	rawMeta, _ := json.MarshalIndent(meta, "", "  ")
 	if err := os.WriteFile(metaPath, rawMeta, 0o644); err != nil {
 		return Result{}, err
@@ -87,6 +91,49 @@ func Export(ctx context.Context, dbPath, outDir, publicBase, gsbsVersion string)
 		IndexPath:       indexPath,
 		OutDir:          outDir,
 	}, nil
+}
+
+// shrinkGuardMaxDrop is the largest fraction any bundle count may fall vs the
+// previous publish before the export is refused. Consumers have their own 25%
+// deletion valve; refusing at the publisher keeps a truncated or corrupted
+// database from shipping at all. Legitimate mass changes can be published
+// deliberately with FORCE_PUBLISH=1.
+const shrinkGuardMaxDrop = 0.25
+
+// guardAgainstShrink refuses to publish a bundle whose row counts collapsed
+// versus the previous manifest.meta.json in outDir. Runs before any artifact
+// is written, so a refused export leaves the last good bundle fully intact.
+func guardAgainstShrink(metaPath string, next *store.PCGWBundleMeta) error {
+	if os.Getenv("FORCE_PUBLISH") == "1" {
+		return nil
+	}
+	raw, err := os.ReadFile(metaPath)
+	if err != nil {
+		return nil // first publish into this OUT_DIR
+	}
+	var prev store.PCGWBundleMeta
+	if json.Unmarshal(raw, &prev) != nil {
+		return nil
+	}
+	type check struct {
+		name     string
+		old, new int
+	}
+	checks := []check{
+		{"games", prev.Counts.Games, next.Counts.Games},
+		{"game_save_locations", prev.Counts.GameSaveLocations, next.Counts.GameSaveLocations},
+		{"catalog", prev.Counts.Catalog, next.Counts.Catalog},
+	}
+	for _, c := range checks {
+		if c.old <= 0 {
+			continue
+		}
+		if drop := float64(c.old-c.new) / float64(c.old); drop > shrinkGuardMaxDrop {
+			return fmt.Errorf("shrink guard: %s collapsed %d -> %d (-%.0f%%) vs previous publish — refusing to publish a possibly truncated bundle (FORCE_PUBLISH=1 to override deliberately)",
+				c.name, c.old, c.new, drop*100)
+		}
+	}
+	return nil
 }
 
 // previousIndex loads the last published index so manifest_version keeps

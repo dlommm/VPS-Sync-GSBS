@@ -18,6 +18,8 @@ func (c Config) Summary() map[string]interface{} {
 		"r2_configured":   c.R2Configured(),
 		"r2_cleanup":      c.R2Cleanup,
 		"r2_keep":         c.R2Keep,
+		"db_backup":       c.DBBackup,
+		"db_backup_keep":  c.DBBackupKeep,
 		"log_file":        c.LogFile,
 		"log_level":       c.LogLevel,
 		"aws_key_present": c.R2AccessKey != "",

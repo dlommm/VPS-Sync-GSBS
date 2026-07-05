@@ -55,20 +55,24 @@ func runMain() int {
 		if cfg.PublicBase == "" {
 			runErr = fmt.Errorf("PUBLIC_BASE required")
 		} else {
-			var res publish.Result
+			var res run.Outcome
 			res, runErr = run.Weekly(ctx, cfg)
 			manifestVersion = res.ManifestVersion
+			notify.RunResult(cfg.WebhookURL, cmd, time.Since(start), manifestVersion, res.Warnings, runErr)
+			break
 		}
-		notify.RunResult(cfg.WebhookURL, cmd, time.Since(start), manifestVersion, runErr)
+		notify.RunResult(cfg.WebhookURL, cmd, time.Since(start), manifestVersion, nil, runErr)
 	case "bootstrap":
 		if cfg.PublicBase == "" {
 			runErr = fmt.Errorf("PUBLIC_BASE required")
 		} else {
-			var res publish.Result
+			var res run.Outcome
 			res, runErr = run.Bootstrap(ctx, cfg)
 			manifestVersion = res.ManifestVersion
+			notify.RunResult(cfg.WebhookURL, cmd, time.Since(start), manifestVersion, res.Warnings, runErr)
+			break
 		}
-		notify.RunResult(cfg.WebhookURL, cmd, time.Since(start), manifestVersion, runErr)
+		notify.RunResult(cfg.WebhookURL, cmd, time.Since(start), manifestVersion, nil, runErr)
 	case "fetch-prod":
 		logx.RunStart("fetch-prod", cfg.Summary())
 		runErr = fetch.ProdDB(cfg.ProdDBSrc, cfg.GSBSDB)

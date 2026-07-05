@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gsbs/gsbs/server/store"
@@ -132,5 +133,38 @@ func TestUpdateManifestReleases(t *testing.T) {
 	}
 	if doc.Releases[1].SHA256 != "ccc" {
 		t.Fatalf("expected replacement sha ccc, got %s", doc.Releases[1].SHA256)
+	}
+}
+
+// TestShrinkGuardRefusesCollapsedBundle: a bundle whose counts collapsed vs
+// the previous publish must be refused before any artifact is overwritten.
+func TestShrinkGuardRefusesCollapsedBundle(t *testing.T) {
+	outDir := t.TempDir()
+	prev := `{"schema_version":2,"counts":{"game_save_locations":19268,"games":54792,"game_data":15915,"catalog":54792}}`
+	metaPath := filepath.Join(outDir, "manifest.meta.json")
+	if err := os.WriteFile(metaPath, []byte(prev), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sentinel := filepath.Join(outDir, "manifest.json.gz")
+	if err := os.WriteFile(sentinel, []byte("previous-good-bundle"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// An empty test DB exports ~zero counts — a total collapse vs prev meta.
+	dbPath := newTestDB(t)
+	_, err := Export(context.Background(), dbPath, outDir, "https://example.com/manifest/", "test")
+	if err == nil || !strings.Contains(err.Error(), "shrink guard") {
+		t.Fatalf("expected shrink guard refusal, got %v", err)
+	}
+
+	raw, _ := os.ReadFile(sentinel)
+	if string(raw) != "previous-good-bundle" {
+		t.Fatal("refused export must leave previous artifacts untouched")
+	}
+
+	// Deliberate override publishes.
+	t.Setenv("FORCE_PUBLISH", "1")
+	if _, err := Export(context.Background(), dbPath, outDir, "https://example.com/manifest/", "test"); err != nil {
+		t.Fatalf("FORCE_PUBLISH=1 should publish: %v", err)
 	}
 }

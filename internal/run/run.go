@@ -29,14 +29,21 @@ func step(name string, fields map[string]interface{}, fn func() (map[string]inte
 	return nil
 }
 
+// Outcome is the pipeline result: the publish result plus non-fatal warnings
+// (e.g. a failed PCGW sync that did not block the publish).
+type Outcome struct {
+	publish.Result
+	Warnings []string
+}
+
 // Weekly executes the full publisher pipeline: optional prod-DB refresh,
 // optional PCGW sync, snapshot, full-bundle export, validation, R2 upload,
-// archive pruning. Returns the publish result so callers can report the
-// published manifest version.
-func Weekly(ctx context.Context, cfg config.Config) (publish.Result, error) {
+// DB snapshot backup, archive pruning. A PCGW sync failure is a warning, not
+// an abort: publishing week-old data beats publishing nothing.
+func Weekly(ctx context.Context, cfg config.Config) (Outcome, error) {
 	runStart := time.Now()
 	logx.RunStart("weekly", cfg.Summary())
-	var res publish.Result
+	var res Outcome
 
 	// Refresh from production first (when enabled) so the existence check below
 	// sees the freshly fetched database rather than failing on a blank host.
@@ -80,7 +87,9 @@ func Weekly(ctx context.Context, cfg config.Config) (publish.Result, error) {
 			}
 			return map[string]interface{}{"rows_upserted": n}, nil
 		}); err != nil {
-			return res, err
+			// Non-fatal: publish with the data we already have rather than
+			// skipping the weekly bundle. The warning reaches the webhook.
+			res.Warnings = append(res.Warnings, fmt.Sprintf("pcgw sync failed (published existing data): %v", err))
 		}
 	} else {
 		logx.StepStart("pcgw_sync", map[string]interface{}{"skipped": true})
@@ -111,7 +120,7 @@ func Weekly(ctx context.Context, cfg config.Config) (publish.Result, error) {
 		"out_dir": cfg.OutDir, "public_base": cfg.PublicBase,
 	}, func() (map[string]interface{}, error) {
 		var exportErr error
-		res, exportErr = publish.Export(ctx, snapPath, cfg.OutDir, cfg.PublicBase, cfg.GSBSVersion)
+		res.Result, exportErr = publish.Export(ctx, snapPath, cfg.OutDir, cfg.PublicBase, cfg.GSBSVersion)
 		if exportErr != nil {
 			return nil, exportErr
 		}
@@ -149,6 +158,27 @@ func Weekly(ctx context.Context, cfg config.Config) (publish.Result, error) {
 		return res, err
 	}
 
+	if cfg.DBBackup {
+		if err := step("db_backup", map[string]interface{}{"keep": cfg.DBBackupKeep}, func() (map[string]interface{}, error) {
+			client, err := r2.New(cfg)
+			if err != nil {
+				return nil, err
+			}
+			key, bytes, err := client.UploadDBBackup(ctx, snapPath)
+			if err != nil {
+				return nil, err
+			}
+			pruned, err := client.PruneDBBackups(ctx, cfg.DBBackupKeep)
+			if err != nil {
+				return map[string]interface{}{"key": key, "bytes": bytes, "prune_error": err.Error()}, nil
+			}
+			return map[string]interface{}{"key": key, "bytes": bytes, "pruned": pruned}, nil
+		}); err != nil {
+			// Non-fatal: a failed backup must not block the publish.
+			res.Warnings = append(res.Warnings, fmt.Sprintf("db backup failed: %v", err))
+		}
+	}
+
 	if cfg.R2Cleanup {
 		if err := step("r2_cleanup", map[string]interface{}{"keep": cfg.R2Keep}, func() (map[string]interface{}, error) {
 			client, err := r2.New(cfg)
@@ -165,20 +195,24 @@ func Weekly(ctx context.Context, cfg config.Config) (publish.Result, error) {
 		}
 	}
 
-	logx.RunOK("weekly", time.Since(runStart), map[string]interface{}{
+	okFields := map[string]interface{}{
 		"manifest_version": res.ManifestVersion,
 		"public_base":      cfg.PublicBase,
-	})
+	}
+	if len(res.Warnings) > 0 {
+		okFields["warnings"] = res.Warnings
+	}
+	logx.RunOK("weekly", time.Since(runStart), okFields)
 	return res, nil
 }
 
 // Bootstrap fetches prod DB (if needed) and publishes the initial full bundle.
-func Bootstrap(ctx context.Context, cfg config.Config) (publish.Result, error) {
+func Bootstrap(ctx context.Context, cfg config.Config) (Outcome, error) {
 	logx.RunStart("bootstrap", cfg.Summary())
 
 	if _, err := os.Stat(cfg.GSBSDB); err != nil {
 		if cfg.ProdDBSrc == "" {
-			return publish.Result{}, fmt.Errorf("no DB at %s and PROD_DB_SRC not set", cfg.GSBSDB)
+			return Outcome{}, fmt.Errorf("no DB at %s and PROD_DB_SRC not set", cfg.GSBSDB)
 		}
 		if err := step("fetch_prod_db", map[string]interface{}{"src": config.RedactProdSrc(cfg.ProdDBSrc)}, func() (map[string]interface{}, error) {
 			if err := fetch.ProdDB(cfg.ProdDBSrc, cfg.GSBSDB); err != nil {
@@ -186,7 +220,7 @@ func Bootstrap(ctx context.Context, cfg config.Config) (publish.Result, error) {
 			}
 			return nil, nil
 		}); err != nil {
-			return publish.Result{}, err
+			return Outcome{}, err
 		}
 	}
 	return Weekly(ctx, cfg)

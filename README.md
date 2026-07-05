@@ -71,6 +71,7 @@ To update immediately instead of waiting for Sunday: `./scripts/update-and-run.s
 | `PUBLIC_BASE` | Public read URL, e.g. `https://gsbs.ohhcloud.com/manifest/` |
 | `R2_*`, `AWS_*` | R2 write credentials (bucket-scoped, VPS only) |
 | `WEBHOOK_URL` | Optional Discord/Slack webhook — posts run result + published version |
+| `DB_BACKUP` / `DB_BACKUP_KEEP` | Weekly gzip'd DB snapshot to private `db-backup/` prefix (default on, keep 6) |
 
 Secrets can live in a separate root-owned file instead of `.env` — see `deploy/secrets.env.example` (`ENV_FILE=/etc/gsbs-sync/env ./bin/vps-sync run`; `.env` still supplies the non-secret settings).
 
@@ -83,6 +84,7 @@ gsbs/  (bucket)
     manifest.json.gz     ← full bundle, content-hash cache key in index URL
     manifest.meta.json
   archive/v<N>-<timestamp>/   ← pruned automatically (R2_KEEP newest kept)
+  db-backup/gsbs-<timestamp>.db.gz  ← weekly full-mirror snapshot (DB_BACKUP_KEEP newest kept)
 ```
 
 GSBS servers read via your public domain (`PUBLIC_BASE`). Writes use the R2 S3 endpoint with your API token. If the local `out/` copy of `index.json` is ever lost (redeploy), the publisher re-seeds the version counter from the live published index so `manifest_version` never regresses and every server keeps updating.
@@ -111,6 +113,13 @@ go build -o bin/vps-sync ./cmd/vps-sync
 go test ./...
 PUBLIC_BASE=https://example.com/manifest/ ./bin/vps-sync export
 ```
+
+## Resilience
+
+- **Publish survives a failed PCGW sync** — the pipeline warns (log + webhook) and publishes the existing data instead of skipping the week.
+- **Shrink guard** — an export whose row counts collapse >25% vs the previous publish is refused before any artifact is touched (a truncated database can't ship); `FORCE_PUBLISH=1` overrides deliberately. GSBS consumers additionally cap deletion reconciliation at 25% per import.
+- **DB backup** — the publisher database is the only full PCGW mirror in the fleet (published bundles are lite). Every run uploads a gzip'd snapshot to the private `db-backup/` prefix; disaster recovery is "download last week's snapshot", not a multi-day API crawl.
+- **Version regression protection** — if the local `out/index.json` is lost, the previous version is re-seeded from the live published index.
 
 ## Operating model
 

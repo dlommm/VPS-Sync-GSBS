@@ -2,8 +2,10 @@ package r2
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -143,6 +145,105 @@ func (c *Client) putFile(ctx context.Context, path, key, contentType, cacheContr
 		Str("content_type", contentType).
 		Msg("R2 object uploaded")
 	return nil
+}
+
+// UploadDBBackup gzips the SQLite snapshot and uploads it to the private
+// db-backup/ prefix. The publisher database is the only full PCGW mirror in
+// the fleet (bundles are lite); without this backup, losing the VPS disk
+// would force a multi-day full API crawl to rebuild. Returns the object key
+// and compressed size. The upload streams from disk — no whole-file buffering.
+func (c *Client) UploadDBBackup(ctx context.Context, snapPath string) (string, int64, error) {
+	gzPath := snapPath + ".gz"
+	if err := gzipFile(snapPath, gzPath); err != nil {
+		return "", 0, fmt.Errorf("compress snapshot: %w", err)
+	}
+	defer os.Remove(gzPath)
+
+	f, err := os.Open(gzPath)
+	if err != nil {
+		return "", 0, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return "", 0, err
+	}
+
+	key := fmt.Sprintf("db-backup/gsbs-%s.db.gz", time.Now().UTC().Format("20060102-150405"))
+	_, err = c.s3.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:        aws.String(c.bucket),
+		Key:           aws.String(key),
+		Body:          f,
+		ContentType:   aws.String("application/gzip"),
+		CacheControl:  aws.String("private, max-age=0"),
+		ContentLength: aws.Int64(info.Size()),
+	})
+	if err != nil {
+		return "", 0, fmt.Errorf("upload %s: %w", key, err)
+	}
+	log.Info().Str("key", key).Int64("bytes", info.Size()).Msg("R2 DB backup uploaded")
+	return key, info.Size(), nil
+}
+
+// PruneDBBackups deletes the oldest db-backup/ objects beyond keep count.
+func (c *Client) PruneDBBackups(ctx context.Context, keep int) (int, error) {
+	var keys []string
+	paginator := s3.NewListObjectsV2Paginator(c.s3, &s3.ListObjectsV2Input{
+		Bucket: aws.String(c.bucket),
+		Prefix: aws.String("db-backup/"),
+	})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return 0, fmt.Errorf("list db backups: %w", err)
+		}
+		for _, o := range page.Contents {
+			if o.Key != nil {
+				keys = append(keys, *o.Key)
+			}
+		}
+	}
+	sort.Strings(keys)
+	if len(keys) <= keep {
+		return 0, nil
+	}
+	prune := len(keys) - keep
+	var objs []types.ObjectIdentifier
+	for i := 0; i < prune; i++ {
+		objs = append(objs, types.ObjectIdentifier{Key: aws.String(keys[i])})
+	}
+	if _, err := c.s3.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+		Bucket: aws.String(c.bucket),
+		Delete: &types.Delete{Objects: objs},
+	}); err != nil {
+		return 0, err
+	}
+	log.Info().Int("pruned", prune).Int("kept", keep).Msg("R2 DB backups pruned")
+	return prune, nil
+}
+
+func gzipFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	gz := gzip.NewWriter(out)
+	if _, err := io.Copy(gz, in); err != nil {
+		out.Close()
+		os.Remove(dst)
+		return err
+	}
+	if err := gz.Close(); err != nil {
+		out.Close()
+		os.Remove(dst)
+		return err
+	}
+	return out.Close()
 }
 
 // PruneArchives deletes oldest archive/v* snapshots beyond keep count.

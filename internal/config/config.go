@@ -28,6 +28,9 @@ type Config struct {
 	R2Cleanup   bool
 	R2Keep      int
 
+	DBBackup     bool
+	DBBackupKeep int
+
 	GSBSVersion string
 	WebhookURL  string
 
@@ -61,6 +64,8 @@ func Load() (Config, error) {
 		R2Prefix:        env("R2_PREFIX", "manifest"),
 		R2Cleanup:       envBool("R2_CLEANUP", true),
 		R2Keep:          envInt("R2_KEEP", 24),
+		DBBackup:        envBool("DB_BACKUP", true),
+		DBBackupKeep:    envInt("DB_BACKUP_KEEP", 6),
 		GSBSVersion:     env("GSBS_VERSION", "vps-sync"),
 		WebhookURL:      strings.TrimSpace(os.Getenv("WEBHOOK_URL")),
 		LogFile:         env("LOG_FILE", ""), // default resolved after OUT_DIR
