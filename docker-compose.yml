@@ -1,18 +1,37 @@
+# GSBS manifest publisher — always-on container, schedule lives in the binary.
+#
+#   docker compose up -d          start the publisher (pulls from GHCR)
+#   docker compose logs -f         follow it
+#   docker compose run --rm sync run        publish once, now
+#   docker compose run --rm sync restore-db restore gsbs.db from R2
+#
+# To build locally instead of pulling, add the override:
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+
 services:
   sync:
-    build:
-      context: .
-      args:
-        GSBS_REPO_URL: ${GSBS_REPO_URL:-https://github.com/dlommm/GSBS--Game-Sync---Backup-Service-.git}
-        GSBS_REF: ${GSBS_REF:-main}
-    image: vps-sync-gsbs:latest
+    image: ${SYNC_IMAGE:-ghcr.io/dlommm/vps-sync-gsbs:latest}
+    container_name: vps-sync-gsbs
     env_file: .env
     environment:
       GSBS_DB: /data/gsbs.db
       OUT_DIR: /data/out
+      LOG_FILE: /data/logs/vps-sync.log
+      # Logs go to stdout so `docker compose logs` is the single place to look.
+      LOG_MIRROR_STDERR: "1"
     volumes:
       - gsbs-data:/data
-    profiles: [manual]
+    # `serve` exits non-zero only on a configuration error it cannot recover
+    # from; a failed publish is retried on the next tick rather than crashing.
+    # unless-stopped therefore restarts across reboots without fighting a
+    # genuinely broken config forever.
+    restart: unless-stopped
+    stop_grace_period: 5m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
 volumes:
   gsbs-data:

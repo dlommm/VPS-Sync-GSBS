@@ -12,7 +12,7 @@ set -euo pipefail
 main() {
   local root gsbs_dir
   root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-  gsbs_dir="${GSBS_DIR:-$root/../GSBS (Game Sync & Backup Service)}"
+  gsbs_dir="${GSBS_DIR:-$root/../GSBS-Game-Sync-Backup-Service}"
 
   update_repo "$root"
   if [ -d "$gsbs_dir/.git" ]; then
@@ -26,7 +26,7 @@ main() {
   # Stage the build so a failure (e.g. GSBS gained a dependency and go.sum
   # hasn't been retidied+pushed yet) keeps the previous working binary and the
   # publish still happens on schedule.
-  if go build -o bin/vps-sync.new ./cmd/vps-sync; then
+  if go build -tags pcgwcrawl -o bin/vps-sync.new ./cmd/vps-sync; then
     mv bin/vps-sync.new bin/vps-sync
   else
     rm -f bin/vps-sync.new
