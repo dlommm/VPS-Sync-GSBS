@@ -54,18 +54,56 @@ If you seed the publisher from a production `gsbs.db` with the user tables strip
 
 ## Quick start — a fresh VPS
 
-The only host requirement is Docker. No Go toolchain, no cron, no checkout of
-GSBS: the image is prebuilt on GHCR and carries its own schedule.
+The only host requirement is Docker. No Go toolchain, no cron, no GSBS checkout:
+the image is prebuilt on GHCR and carries its own schedule.
+
+`docker-compose.yml` takes all of its settings by variable substitution, so the
+same file works whether you paste it into a hosting panel or run it from a
+checkout. Required variables use `${VAR:?...}`, so a missing one stops the
+deploy and names itself instead of starting a publisher that fails later.
+
+### Option A — a hosting control panel (Hostinger Docker Manager and similar)
+
+1. Create a new project / compose deployment and paste the contents of
+   [`docker-compose.yml`](docker-compose.yml) into the editor.
+2. Add the environment variables below in the panel's variables form.
+3. Deploy, then watch the log view for `serve: scheduler started`.
+
+Minimum set — the deploy is refused without these five:
+
+```
+PUBLIC_BASE=https://gsbs.ohhcloud.com/manifest/
+AWS_ACCESS_KEY_ID=<R2 access key id>
+AWS_SECRET_ACCESS_KEY=<R2 secret access key>
+R2_ENDPOINT=https://<cloudflare-account-id>.r2.cloudflarestorage.com
+R2_BUCKET=gsbs
+```
+
+Worth adding on a first deploy:
+
+```
+RUN_ON_START=1          # publish immediately rather than waiting for Sunday
+GSBS_PCGW_USER_AGENT=GSBS-manifest-publisher/1.0 (you@example.com)
+WEBHOOK_URL=            # optional Discord/Slack webhook for run results
+```
+
+Set `RUN_ON_START` back to `0` after the first successful publish, so a restart
+or a host reboot does not republish every time.
+
+Everything else has a working default — schedule, retention, log level. The
+[configuration table](#configuration) lists the rest.
+
+### Option B — SSH
 
 ```bash
 # 1. Docker (Debian/Ubuntu)
 curl -fsSL https://get.docker.com | sudo sh
 
-# 2. This repo — only the compose file and .env are needed
+# 2. This repo — only the compose file and .env are actually needed
 sudo mkdir -p /opt/vps-sync-gsbs && cd /opt/vps-sync-gsbs
-sudo git clone https://github.com/dlommm/vps-sync-gsbs.git .
+sudo git clone https://github.com/dlommm/VPS-Sync-GSBS.git .
 
-# 3. Configure
+# 3. Configure. Compose reads this .env automatically for substitution.
 sudo cp .env.example .env
 sudo nano .env      # R2 keys, R2_ENDPOINT, R2_BUCKET, PUBLIC_BASE
 sudo chmod 600 .env
@@ -76,10 +114,7 @@ sudo docker compose up -d
 sudo docker compose logs -f
 ```
 
-Set `RUN_ON_START=1` in `.env` for that first immediate publish; leave it `0`
-afterwards so a restart does not republish every time.
-
-Useful one-offs:
+### Either way
 
 ```bash
 docker compose run --rm sync run          # publish now
@@ -87,6 +122,13 @@ docker compose run --rm sync restore-db   # re-pull the mirror from R2
 docker compose run --rm sync validate     # check artifacts
 docker compose pull && docker compose up -d   # update to the latest image
 ```
+
+> **The GHCR package must be readable by the VPS.** Packages published by
+> Actions can be created private even from a public repo. After the first
+> successful workflow run, check
+> `https://github.com/users/dlommm/packages/container/vps-sync-gsbs/settings`
+> and set visibility to public — otherwise the pull fails with `denied` and the
+> host needs a `docker login ghcr.io` with a read:packages token instead.
 
 <details>
 <summary>Running without Docker (the previous cron-based setup)</summary>
@@ -102,7 +144,11 @@ sudo cp deploy/logrotate.gsbs-vps-sync /etc/logrotate.d/gsbs-vps-sync
 To update immediately instead of waiting for Sunday: `./scripts/update-and-run.sh run`.
 </details>
 
-### Configuration (`.env`)
+## Configuration
+
+Set these in your panel's variables form, or in a `.env` beside the compose file
+(Compose substitutes from it automatically). Running the binary directly reads
+`.env` too.
 
 | Variable | Purpose |
 |----------|---------|

@@ -1,32 +1,95 @@
 # GSBS manifest publisher — always-on container, schedule lives in the binary.
 #
-#   docker compose up -d          start the publisher (pulls from GHCR)
-#   docker compose logs -f         follow it
-#   docker compose run --rm sync run        publish once, now
-#   docker compose run --rm sync restore-db restore gsbs.db from R2
+# Settings are read by variable substitution rather than `env_file:`, so this
+# file works unchanged in both places it gets used:
 #
-# To build locally instead of pulling, add the override:
+#   * A control panel (Hostinger's Docker Manager and similar) where you paste
+#     this compose file and set variables in a web form. There is no .env on
+#     disk there, and an `env_file:` pointing at one aborts the deploy.
+#   * A shell checkout, where Compose automatically reads a `.env` sitting
+#     beside this file and substitutes from it — no `env_file:` needed.
+#
+# Variables marked `:?` are required: Compose refuses to start and names the
+# missing one, rather than launching a publisher that fails hours later.
+#
+#   docker compose up -d                      start the publisher
+#   docker compose logs -f                    follow it
+#   docker compose run --rm sync run          publish once, now
+#   docker compose run --rm sync restore-db   restore gsbs.db from R2
+#
+# To build locally instead of pulling from GHCR:
 #   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 
 services:
   sync:
     image: ${SYNC_IMAGE:-ghcr.io/dlommm/vps-sync-gsbs:latest}
     container_name: vps-sync-gsbs
-    env_file: .env
+    restart: unless-stopped
+
     environment:
+      # ── Required ─────────────────────────────────────────────────────────
+      PUBLIC_BASE: ${PUBLIC_BASE:?set PUBLIC_BASE, e.g. https://gsbs.example.com/manifest/}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?set AWS_ACCESS_KEY_ID (R2 access key)}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?set AWS_SECRET_ACCESS_KEY (R2 secret key)}
+      R2_ENDPOINT: ${R2_ENDPOINT:?set R2_ENDPOINT, e.g. https://<account-id>.r2.cloudflarestorage.com}
+      R2_BUCKET: ${R2_BUCKET:?set R2_BUCKET}
+
+      # ── Paths (fixed inside the container; state lives on the volume) ─────
       GSBS_DB: /data/gsbs.db
       OUT_DIR: /data/out
       LOG_FILE: /data/logs/vps-sync.log
-      # Logs go to stdout so `docker compose logs` is the single place to look.
+      # Logs to stdout as well, so `docker compose logs` and the panel's log
+      # viewer are enough — no shell needed to read a file on the volume.
       LOG_MIRROR_STDERR: "1"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+      # ── Schedule ─────────────────────────────────────────────────────────
+      SCHEDULE: ${SCHEDULE:-0 3 * * 0}
+      SCHEDULE_TZ: ${SCHEDULE_TZ:-UTC}
+      # 1 = publish immediately on start instead of waiting for the first tick.
+      # Turn on for the first deploy, then back off so restarts don't republish.
+      RUN_ON_START: ${RUN_ON_START:-0}
+      # 1 = seed a missing database before the first run, from PROD_DB_SRC when
+      # set, otherwise the newest R2 db-backup/ snapshot. This is what makes a
+      # rebuilt host recover on its own.
+      AUTO_BOOTSTRAP: ${AUTO_BOOTSTRAP:-1}
+
+      # ── R2 publish / retention ───────────────────────────────────────────
+      R2_PREFIX: ${R2_PREFIX:-manifest}
+      R2_CLEANUP: ${R2_CLEANUP:-1}
+      R2_KEEP: ${R2_KEEP:-24}
+      DB_BACKUP: ${DB_BACKUP:-1}
+      DB_BACKUP_KEEP: ${DB_BACKUP_KEEP:-6}
+
+      # ── PCGW sync ────────────────────────────────────────────────────────
+      RUN_PCGW_SYNC: ${RUN_PCGW_SYNC:-1}
+      PCGW_SYNC_FULL: ${PCGW_SYNC_FULL:-0}
+      GSBS_VERSION: ${GSBS_VERSION:-vps-sync}
+
+      # ── Optional ─────────────────────────────────────────────────────────
+      # rsync seed from a live GSBS host; leave empty to seed from R2 instead.
+      PROD_DB_SRC: ${PROD_DB_SRC:-}
+      FETCH_PROD_DB: ${FETCH_PROD_DB:-0}
+      # Discord/Slack incoming webhook — posts each run's result.
+      WEBHOOK_URL: ${WEBHOOK_URL:-}
+      # Identify the publisher to PCGamingWiki; they ask that crawlers do.
+      GSBS_PCGW_USER_AGENT: ${GSBS_PCGW_USER_AGENT:-}
+      # Seconds between PCGW requests. Raise it to be gentler, never lower it
+      # below the 2s default.
+      GSBS_PCGW_RATE_LIMIT: ${GSBS_PCGW_RATE_LIMIT:-}
+      # Pages ingested per run. Lower it on a small VPS to shorten each run.
+      GSBS_PCGW_MAX_PAGES_PER_RUN: ${GSBS_PCGW_MAX_PAGES_PER_RUN:-}
+
     volumes:
+      # Holds the PCGW mirror, published artifacts and logs. Do not delete it
+      # casually: the mirror is expensive to rebuild, though `restore-db` can
+      # pull it back from R2.
       - gsbs-data:/data
-    # `serve` exits non-zero only on a configuration error it cannot recover
-    # from; a failed publish is retried on the next tick rather than crashing.
-    # unless-stopped therefore restarts across reboots without fighting a
-    # genuinely broken config forever.
-    restart: unless-stopped
+
+    # A publish can run long. Give it room to unwind on `docker stop` instead of
+    # being killed mid-upload; the binary handles SIGTERM.
     stop_grace_period: 5m
+
     logging:
       driver: json-file
       options:
