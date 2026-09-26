@@ -2,6 +2,7 @@ package run
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -206,24 +207,52 @@ func Weekly(ctx context.Context, cfg config.Config) (Outcome, error) {
 	return res, nil
 }
 
-// Bootstrap fetches prod DB (if needed) and publishes the initial full bundle.
+// Bootstrap seeds the database (if needed) and publishes the initial full bundle.
+//
+// Seeding tries PROD_DB_SRC first when it is set, then the newest snapshot in
+// the R2 db-backup/ prefix. The R2 path is what makes a rebuilt host
+// recoverable: the weekly job has always backed the mirror up there, and it is
+// the only copy once the original VPS is gone.
 func Bootstrap(ctx context.Context, cfg config.Config) (Outcome, error) {
 	logx.RunStart("bootstrap", cfg.Summary())
 
 	if _, err := os.Stat(cfg.GSBSDB); err != nil {
-		if cfg.ProdDBSrc == "" {
-			return Outcome{}, fmt.Errorf("no DB at %s and PROD_DB_SRC not set", cfg.GSBSDB)
-		}
-		if err := step("fetch_prod_db", map[string]interface{}{"src": config.RedactProdSrc(cfg.ProdDBSrc)}, func() (map[string]interface{}, error) {
-			if err := fetch.ProdDB(cfg.ProdDBSrc, cfg.GSBSDB); err != nil {
-				return nil, err
-			}
-			return nil, nil
-		}); err != nil {
+		if err := SeedDB(ctx, cfg); err != nil {
 			return Outcome{}, err
 		}
 	}
 	return Weekly(ctx, cfg)
+}
+
+// SeedDB populates cfg.GSBSDB from PROD_DB_SRC or the newest R2 DB backup.
+func SeedDB(ctx context.Context, cfg config.Config) error {
+	if cfg.ProdDBSrc != "" {
+		return step("fetch_prod_db", map[string]interface{}{"src": config.RedactProdSrc(cfg.ProdDBSrc)}, func() (map[string]interface{}, error) {
+			if err := fetch.ProdDB(cfg.ProdDBSrc, cfg.GSBSDB); err != nil {
+				return nil, err
+			}
+			return nil, nil
+		})
+	}
+
+	if !cfg.R2Configured() {
+		return fmt.Errorf("no DB at %s, PROD_DB_SRC not set, and R2 not configured — nothing to restore from", cfg.GSBSDB)
+	}
+
+	return step("restore_db_backup", map[string]interface{}{"dest": cfg.GSBSDB}, func() (map[string]interface{}, error) {
+		client, err := r2.New(cfg)
+		if err != nil {
+			return nil, err
+		}
+		key, bytes, err := client.RestoreDBBackup(ctx, "", cfg.GSBSDB)
+		if err != nil {
+			if errors.Is(err, r2.ErrNoDBBackup) {
+				return nil, fmt.Errorf("no DB at %s, PROD_DB_SRC not set, and the bucket holds no db-backup/ snapshot", cfg.GSBSDB)
+			}
+			return nil, err
+		}
+		return map[string]interface{}{"key": key, "bytes": bytes}, nil
+	})
 }
 
 func artifactSizes(outDir string) map[string]int64 {

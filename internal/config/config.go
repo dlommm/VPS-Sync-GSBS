@@ -20,6 +20,12 @@ type Config struct {
 	RunPCGWSync  bool
 	PCGWSyncFull bool
 
+	// Scheduler settings, used by `vps-sync serve` (the always-on container).
+	Schedule      string // 5-field cron expression
+	ScheduleTZ    string // IANA zone Schedule is read in
+	RunOnStart    bool   // publish once at startup instead of waiting for the first tick
+	AutoBootstrap bool   // seed a missing DB (PROD_DB_SRC, else newest R2 backup) before the first run
+
 	R2AccessKey string
 	R2SecretKey string
 	R2Endpoint  string
@@ -57,6 +63,10 @@ func Load() (Config, error) {
 		FetchProdDB:     envBool("FETCH_PROD_DB", false),
 		RunPCGWSync:     envBool("RUN_PCGW_SYNC", true),
 		PCGWSyncFull:    envBool("PCGW_SYNC_FULL", false),
+		Schedule:        env("SCHEDULE", "0 3 * * 0"), // Sunday 03:00
+		ScheduleTZ:      env("SCHEDULE_TZ", "UTC"),
+		RunOnStart:      envBool("RUN_ON_START", false),
+		AutoBootstrap:   envBool("AUTO_BOOTSTRAP", true),
 		R2AccessKey:     os.Getenv("AWS_ACCESS_KEY_ID"),
 		R2SecretKey:     os.Getenv("AWS_SECRET_ACCESS_KEY"),
 		R2Endpoint:      strings.TrimSpace(os.Getenv("R2_ENDPOINT")),

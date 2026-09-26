@@ -11,4 +11,4 @@ if ! command -v go >/dev/null; then
   curl -fsSL "https://go.dev/dl/go${GO_VER}.linux-${go_arch}.tar.gz" | tar -C /usr/local -xz
   echo 'export PATH=$PATH:/usr/local/go/bin' >/etc/profile.d/go-path.sh
 fi
-echo "Build vps-sync: cd /opt/vps-sync-gsbs && go build -o bin/vps-sync ./cmd/vps-sync"
+echo "Build vps-sync: cd /opt/vps-sync-gsbs && go build -tags pcgwcrawl -o bin/vps-sync ./cmd/vps-sync"

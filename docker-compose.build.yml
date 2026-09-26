@@ -1,0 +1,16 @@
+# Build the image locally instead of pulling it from Docker Hub.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#
+# Use this for development, for a change not yet pushed to Docker Hub, or on a host
+# that cannot reach the registry.
+
+services:
+  sync:
+    build:
+      context: .
+      args:
+        GSBS_REPO_URL: ${GSBS_REPO_URL:-https://github.com/dlommm/GSBS-Game-Sync-Backup-Service.git}
+        GSBS_REF: ${GSBS_REF:-main}
+        VERSION: ${VERSION:-local}
+    image: vps-sync-gsbs:local
