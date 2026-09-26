@@ -17,12 +17,12 @@
 #   docker compose run --rm sync run          publish once, now
 #   docker compose run --rm sync restore-db   restore gsbs.db from R2
 #
-# To build locally instead of pulling from GHCR:
+# To build locally instead of pulling from Docker Hub:
 #   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 
 services:
   sync:
-    image: ${SYNC_IMAGE:-ghcr.io/dlommm/vps-sync-gsbs:latest}
+    image: ${SYNC_IMAGE:-dendlomm/vps-sync-gsbs:latest}
     container_name: vps-sync-gsbs
     restart: unless-stopped
 

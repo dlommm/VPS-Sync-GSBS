@@ -55,7 +55,7 @@ If you seed the publisher from a production `gsbs.db` with the user tables strip
 ## Quick start — a fresh VPS
 
 The only host requirement is Docker. No Go toolchain, no cron, no GSBS checkout:
-the image is prebuilt on GHCR and carries its own schedule.
+the image is prebuilt on Docker Hub and carries its own schedule.
 
 `docker-compose.yml` takes all of its settings by variable substitution, so the
 same file works whether you paste it into a hosting panel or run it from a
@@ -123,12 +123,9 @@ docker compose run --rm sync validate     # check artifacts
 docker compose pull && docker compose up -d   # update to the latest image
 ```
 
-> **The GHCR package must be readable by the VPS.** Packages published by
-> Actions can be created private even from a public repo. After the first
-> successful workflow run, check
-> `https://github.com/users/dlommm/packages/container/vps-sync-gsbs/settings`
-> and set visibility to public — otherwise the pull fails with `denied` and the
-> host needs a `docker login ghcr.io` with a read:packages token instead.
+> **The Docker Hub repository must be public** (the default for a new
+> repository on a free account), otherwise the pull fails with `denied` and the
+> host needs a `docker login` first.
 
 <details>
 <summary>Running without Docker (the previous cron-based setup)</summary>
@@ -184,14 +181,14 @@ GSBS servers read via your public domain (`PUBLIC_BASE`). Writes use the R2 S3 e
 
 The container is the scheduler: `vps-sync serve` is the default command, so the
 publisher stays up and fires on `SCHEDULE` with nothing installed on the host.
-Images are built by CI and pushed to `ghcr.io/dlommm/vps-sync-gsbs`.
+Images are built by CI and pushed to Docker Hub as `dendlomm/vps-sync-gsbs`.
 
 State lives in the `gsbs-data` volume (`/data`): the mirror database, `out/`
 artifacts, and logs. Logs also go to stdout, so `docker compose logs -f` is the
 one place to look.
 
 To build locally rather than pull — for an unpushed change, or a host that
-cannot reach GHCR:
+cannot reach Docker Hub:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
