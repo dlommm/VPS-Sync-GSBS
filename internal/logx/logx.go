@@ -13,6 +13,9 @@ import (
 var (
 	stderrRestore func()
 	logFile       *os.File
+	// version is the build version, stamped on the startup line and on every
+	// run.start so the logs alone show which release is running.
+	version string
 )
 
 // Options configures logging output.
@@ -20,6 +23,7 @@ type Options struct {
 	File         string // append log path; empty = stderr only
 	MirrorStderr bool   // also print to terminal when logging to file
 	Level        string // debug, info, warn, error
+	Version      string // build version, e.g. v1.1.0
 }
 
 // Setup configures zerolog and optionally tees stderr into the log file.
@@ -28,6 +32,7 @@ func Setup(opts Options) error {
 	if err != nil || level == zerolog.NoLevel {
 		level = zerolog.InfoLevel
 	}
+	version = opts.Version
 	zerolog.TimeFieldFormat = time.RFC3339
 	zerolog.SetGlobalLevel(level)
 
@@ -61,9 +66,7 @@ func Setup(opts Options) error {
 		NoColor:    true,
 	}).With().Timestamp().Logger()
 
-	if opts.File != "" {
-		log.Info().Str("log_file", opts.File).Msg("logging initialized")
-	}
+	log.Info().Str("version", version).Str("log_file", opts.File).Msg("logging initialized")
 	return nil
 }
 
@@ -121,7 +124,7 @@ func isTerminal(f *os.File) bool {
 
 // RunStart logs the beginning of a command run.
 func RunStart(cmd string, fields map[string]interface{}) {
-	e := log.Info().Str("event", "run.start").Str("command", cmd)
+	e := log.Info().Str("event", "run.start").Str("command", cmd).Str("version", version)
 	for k, v := range fields {
 		e = e.Interface(k, v)
 	}

@@ -40,6 +40,7 @@ func runMain() int {
 		File:         cfg.LogFile,
 		MirrorStderr: cfg.LogMirrorStderr,
 		Level:        cfg.LogLevel,
+		Version:      version,
 	}); err != nil {
 		fmt.Fprintf(os.Stderr, "log setup error: %v\n", err)
 		return 1

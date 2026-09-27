@@ -40,6 +40,11 @@ type Config struct {
 	GSBSVersion string
 	WebhookURL  string
 
+	// PCGWBotLogin records whether a PCGW bot password is configured. GSBS
+	// reads the credentials from the environment itself; this is only for the
+	// run summary, so the password never passes through here.
+	PCGWBotLogin bool
+
 	LogFile         string
 	LogLevel        string
 	LogMirrorStderr bool
@@ -78,6 +83,7 @@ func Load() (Config, error) {
 		DBBackupKeep:    envInt("DB_BACKUP_KEEP", 6),
 		GSBSVersion:     env("GSBS_VERSION", "vps-sync"),
 		WebhookURL:      strings.TrimSpace(os.Getenv("WEBHOOK_URL")),
+		PCGWBotLogin:    strings.TrimSpace(os.Getenv("GSBS_PCGW_BOT_USER")) != "" && os.Getenv("GSBS_PCGW_BOT_PASSWORD") != "",
 		LogFile:         env("LOG_FILE", ""), // default resolved after OUT_DIR
 		LogLevel:        env("LOG_LEVEL", "info"),
 		LogMirrorStderr: envBool("LOG_MIRROR_STDERR", false),

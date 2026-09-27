@@ -23,6 +23,7 @@ func (c Config) Summary() map[string]interface{} {
 		"log_file":        c.LogFile,
 		"log_level":       c.LogLevel,
 		"aws_key_present": c.R2AccessKey != "",
+		"pcgw_bot_login":  c.PCGWBotLogin,
 	}
 }
 
