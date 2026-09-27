@@ -72,10 +72,14 @@ services:
       FETCH_PROD_DB: ${FETCH_PROD_DB:-0}
       # Discord/Slack incoming webhook — posts each run's result.
       WEBHOOK_URL: ${WEBHOOK_URL:-}
-      # Identify the publisher to PCGamingWiki; they ask that crawlers do.
-      GSBS_PCGW_USER_AGENT: ${GSBS_PCGW_USER_AGENT:-}
-      # Seconds between PCGW requests. Raise it to be gentler, never lower it
-      # below the 2s default.
+      # PCGamingWiki requires a custom User-Agent with contact information and
+      # may block generic ones (PCGamingWiki:API). The default points at this
+      # repo; set it in the panel to add an email, e.g.
+      #   GSBS-manifest-publisher/1.0 (https://github.com/dlommm/VPS-Sync-GSBS; you@example.com)
+      GSBS_PCGW_USER_AGENT: ${GSBS_PCGW_USER_AGENT:-GSBS-manifest-publisher/1.0 (https://github.com/dlommm/VPS-Sync-GSBS)}
+      # Pause between PCGW requests, as a duration ("3s", not "3" — a bare
+      # number is ignored). PCGW allows 60 requests/minute and blocks the IP
+      # for 60s past it; the 2s default is 30/minute. Never go below 1s.
       GSBS_PCGW_RATE_LIMIT: ${GSBS_PCGW_RATE_LIMIT:-}
       # Pages ingested per run. Lower it on a small VPS to shorten each run.
       GSBS_PCGW_MAX_PAGES_PER_RUN: ${GSBS_PCGW_MAX_PAGES_PER_RUN:-}

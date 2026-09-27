@@ -90,7 +90,7 @@ Worth adding on a first deploy:
 
 ```
 RUN_ON_START=1          # publish immediately rather than waiting for Sunday
-GSBS_PCGW_USER_AGENT=GSBS-manifest-publisher/1.0 (you@example.com)
+GSBS_PCGW_USER_AGENT=GSBS-manifest-publisher/1.0 (https://github.com/dlommm/VPS-Sync-GSBS; you@example.com)
 WEBHOOK_URL=            # optional Discord/Slack webhook for run results
 ```
 
