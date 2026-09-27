@@ -34,10 +34,10 @@ services:
       R2_ENDPOINT: ${R2_ENDPOINT:?set R2_ENDPOINT, e.g. https://<account-id>.r2.cloudflarestorage.com}
       R2_BUCKET: ${R2_BUCKET:?set R2_BUCKET}
 
-      # ── Paths (fixed inside the container; state lives on the volume) ─────
+      # ── Paths (inside the container; see the bind mounts below) ──────────
       GSBS_DB: /data/gsbs.db
-      OUT_DIR: /data/out
-      LOG_FILE: /data/logs/vps-sync.log
+      OUT_DIR: /out
+      LOG_FILE: /logs/vps-sync.log
       # Logs to stdout as well, so `docker compose logs` and the panel's log
       # viewer are enough — no shell needed to read a file on the volume.
       LOG_MIRROR_STDERR: "1"
@@ -80,11 +80,16 @@ services:
       # Pages ingested per run. Lower it on a small VPS to shorten each run.
       GSBS_PCGW_MAX_PAGES_PER_RUN: ${GSBS_PCGW_MAX_PAGES_PER_RUN:-}
 
+    # State lives in plain host directories so it is visible and easy to back
+    # up. The container runs as uid 10001, so the host side must be owned by it:
+    #   sudo mkdir -p /opt/vps-sync-gsbs/{data,out,logs}
+    #   sudo chown -R 10001:10001 /opt/vps-sync-gsbs/{data,out,logs}
+    # data/ holds the PCGW mirror (gsbs.db). Do not delete it casually: it is
+    # expensive to rebuild, though `restore-db` can pull it back from R2.
     volumes:
-      # Holds the PCGW mirror, published artifacts and logs. Do not delete it
-      # casually: the mirror is expensive to rebuild, though `restore-db` can
-      # pull it back from R2.
-      - gsbs-data:/data
+      - ${HOST_DIR:-/opt/vps-sync-gsbs}/data:/data
+      - ${HOST_DIR:-/opt/vps-sync-gsbs}/out:/out
+      - ${HOST_DIR:-/opt/vps-sync-gsbs}/logs:/logs
 
     # A publish can run long. Give it room to unwind on `docker stop` instead of
     # being killed mid-upload; the binary handles SIGTERM.
@@ -95,6 +100,3 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
-
-volumes:
-  gsbs-data:

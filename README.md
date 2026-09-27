@@ -64,10 +64,17 @@ deploy and names itself instead of starting a publisher that fails later.
 
 ### Option A — a hosting control panel (Hostinger Docker Manager and similar)
 
-1. Create a new project / compose deployment and paste the contents of
+1. On the VPS, create the state directories and hand them to the container's
+   user (uid 10001). Put an existing `gsbs.db` in `data/` first if you have
+   one; otherwise it is restored from R2:
+   ```bash
+   sudo mkdir -p /opt/vps-sync-gsbs/{data,out,logs}
+   sudo chown -R 10001:10001 /opt/vps-sync-gsbs/{data,out,logs}
+   ```
+2. Create a new project / compose deployment and paste the contents of
    [`docker-compose.yml`](docker-compose.yml) into the editor.
-2. Add the environment variables below in the panel's variables form.
-3. Deploy, then watch the log view for `serve: scheduler started`.
+3. Add the environment variables below in the panel's variables form.
+4. Deploy, then watch the log view for `serve: scheduler started`.
 
 Minimum set — the deploy is refused without these five:
 
@@ -108,7 +115,10 @@ sudo cp .env.example .env
 sudo nano .env      # R2 keys, R2_ENDPOINT, R2_BUCKET, PUBLIC_BASE
 sudo chmod 600 .env
 
-# 4. Start. With no database present it restores the newest R2 db-backup/
+# 4. State directories, owned by the container's user (uid 10001).
+sudo mkdir -p data out logs && sudo chown -R 10001:10001 data out logs
+
+# 5. Start. With no database present it restores the newest R2 db-backup/
 #    snapshot, publishes once, then waits for SCHEDULE.
 sudo docker compose up -d
 sudo docker compose logs -f
@@ -183,7 +193,7 @@ The container is the scheduler: `vps-sync serve` is the default command, so the
 publisher stays up and fires on `SCHEDULE` with nothing installed on the host.
 Images are built by CI and pushed to Docker Hub as `dendlomm/vps-sync-gsbs`.
 
-State lives in the `gsbs-data` volume (`/data`): the mirror database, `out/`
+State lives in bind-mounted host directories under `/opt/vps-sync-gsbs` (`HOST_DIR`): `data/` (the mirror database), `out/`
 artifacts, and logs. Logs also go to stdout, so `docker compose logs -f` is the
 one place to look.
 
