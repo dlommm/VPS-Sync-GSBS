@@ -86,6 +86,17 @@ R2_ENDPOINT=https://<cloudflare-account-id>.r2.cloudflarestorage.com
 R2_BUCKET=gsbs
 ```
 
+A PCGamingWiki bot password is needed too, or the PCGW sync fails and each run
+republishes the existing data. PCGW's Cloudflare challenges the anonymous Cargo
+export from data-center IPs, so the sync logs in to the API instead. Create one
+at [Special:BotPasswords](https://www.pcgamingwiki.com/wiki/Special:BotPasswords)
+with the grant *Create, query and delete data through the Cargo extension*:
+
+```
+GSBS_PCGW_BOT_USER=YourAccount@gsbs-sync
+GSBS_PCGW_BOT_PASSWORD=<generated bot password>
+```
+
 Worth adding on a first deploy:
 
 ```
