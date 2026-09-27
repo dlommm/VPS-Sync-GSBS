@@ -192,6 +192,12 @@ GSBS servers read via your public domain (`PUBLIC_BASE`). Writes use the R2 S3 e
 The container is the scheduler: `vps-sync serve` is the default command, so the
 publisher stays up and fires on `SCHEDULE` with nothing installed on the host.
 Images are built by CI and pushed to Docker Hub as `dendlomm/vps-sync-gsbs`.
+Every push to `main` (and the weekly rebuild) is a release: the image is
+tagged with the new version and `latest`, the commit is tagged `vX.Y.Z`, and a
+GitHub release is created. The bump comes from the commit messages since the
+last release — `feat:` for minor, `feat!:` / `BREAKING CHANGE` for major,
+anything else for patch; `[minor]` or `[major]` anywhere forces one. To pin a
+host to a version, set `SYNC_IMAGE=dendlomm/vps-sync-gsbs:1.0.0`.
 
 State lives in bind-mounted host directories under `/opt/vps-sync-gsbs` (`HOST_DIR`): `data/` (the mirror database), `out/`
 artifacts, and logs. Logs also go to stdout, so `docker compose logs -f` is the

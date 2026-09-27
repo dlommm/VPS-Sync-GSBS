@@ -2,16 +2,26 @@ name: Publish image
 
 # Builds the publisher image and pushes it to Docker Hub so a VPS only ever pulls.
 #
+# Every run cuts a new release: scripts/next-version.sh picks the next semver
+# from the commits since the last vX.Y.Z tag (feat: -> minor, feat!: or
+# BREAKING CHANGE -> major, anything else -> patch). The image is pushed as
+# both X.Y.Z and latest, and only after that succeeds is the commit tagged
+# vX.Y.Z and a GitHub release created.
+#
 # GSBS is a build-time dependency cloned inside the Dockerfile, so a GSBS change
 # does not trigger this workflow. Use the manual run (or the weekly schedule) to
-# pick up a new GSBS main.
+# pick up a new GSBS main; those runs are patch releases.
 
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   workflow_dispatch:
     inputs:
+      bump:
+        description: "Version bump (auto reads the commit messages)"
+        type: choice
+        options: [auto, patch, minor, major]
+        default: auto
       gsbs_ref:
         description: "GSBS ref to build against"
         default: main
@@ -21,6 +31,11 @@ on:
   schedule:
     - cron: "0 6 * * 1"
 
+# Two runs computing a version at once would both pick the same number.
+concurrency:
+  group: publish-image
+  cancel-in-progress: false
+
 env:
   IMAGE_NAME: dendlomm/vps-sync-gsbs
 
@@ -28,9 +43,24 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write # push the version tag and create the release
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # tags and history, for the version calculation
+
+      - name: Work out the next version
+        id: version
+        env:
+          BUMP: ${{ inputs.bump || 'auto' }}
+        run: |
+          version="$(scripts/next-version.sh)"
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "::error::v$version already exists"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Releasing v$version" >> "$GITHUB_STEP_SUMMARY"
 
       - uses: docker/setup-buildx-action@v3
 
@@ -46,11 +76,8 @@ jobs:
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,format=short
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.version.outputs.version }}
+            type=raw,value=latest
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -61,16 +88,24 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             GSBS_REF=${{ inputs.gsbs_ref || 'main' }}
-            VERSION=${{ github.ref_name }}
+            VERSION=v${{ steps.version.outputs.version }}
             REVISION=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Pull one of the tags that were actually pushed rather than recomputing
-      # one: metadata-action's short-sha format need not match `git rev-parse
-      # --short`, and guessing wrong fails the job on a good image.
       - name: Smoke-test the pushed image
         run: |
-          tag="$(head -n1 <<<'${{ steps.meta.outputs.tags }}')"
-          echo "Smoke-testing $tag"
-          docker run --rm "$tag" version
+          tag="${IMAGE_NAME}:${{ steps.version.outputs.version }}"
+          got="$(docker run --rm "$tag" version)"
+          echo "$tag reports $got"
+          [[ "$got" == "v${{ steps.version.outputs.version }}" ]]
+
+      - name: Tag the commit and publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: v${{ steps.version.outputs.version }}
+        run: |
+          git tag "$VERSION"
+          git push origin "$VERSION"
+          gh release create "$VERSION" --title "$VERSION" --generate-notes \
+            --notes "Docker image: \`${IMAGE_NAME}:${VERSION#v}\` (also \`latest\`)"
